@@ -28,7 +28,7 @@ public class Indexer {
         }
 
         final Map<File, String> files = new HashMap<>();
-        int threadsCount = 1;
+        int threadsCount = 2;
         String indexFilename = "index.ser";
 
         for (int i = 0; i < args.length; i++) {
@@ -87,6 +87,8 @@ public class Indexer {
 
         Searcher<String> searcher = new Searcher<>(index);
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        System.out.println("You can use english letters 'a'-'z', 'A'-'Z', russian letters 'а'-'я', 'А'-'Я'," +
+                " brackets '(' and ')', and logical operators ' AND ', ' OR '.");
         System.out.println("Enter query:");
         String line = in.readLine();
         while (line != null && !line.isEmpty()) {

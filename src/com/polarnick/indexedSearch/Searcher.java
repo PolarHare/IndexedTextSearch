@@ -5,8 +5,6 @@ import com.sun.istack.internal.Nullable;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -24,6 +22,8 @@ public class Searcher<Value> {
         try {
             Searcher<String> searcher = new Searcher<>(Index.<String>loadFromFile(args[0]));
             BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+            System.out.println("You can use english letters 'a'-'z', 'A'-'Z', russian letters 'а'-'я', 'А'-'Я'," +
+                    " brackets '(' and ')', and logical operators ' AND ', ' OR '.");
             System.out.println("Enter query:");
             String line = in.readLine();
             while (line != null && !line.isEmpty()) {
@@ -88,7 +88,7 @@ public class Searcher<Value> {
         if (result != null) {
             return result;
         }
-        if (str.indexOf(from) == '(' && str.indexOf(to - 1) == ')') {
+        if (str.charAt(from) == '(' && str.charAt(to - 1) == ')') {
             return find(pairBracket, str, from + 1, to - 1);
         } else {
             for (int i = from; i < to; i++) {
@@ -103,74 +103,55 @@ public class Searcher<Value> {
 
     @Nullable
     private Set<Value> findAnd(int[] pairBracket, String str, int from, int to) {
-        List<Set<Value>> sets = new ArrayList<>();
-        Set<Value> smallest = null;
-        int lastAnd = -1;
+        Set<Value> result = null;
+        int curFrom = from;
         for (int i = from; i < to; i++) {
             char curC = str.charAt(i);
             if (curC == '(') {
                 i = pairBracket[i];
             } else if (isContainSubstringAt(str, i, AND_OPERAND)) {
-                lastAnd = i;
-                Set<Value> set = find(pairBracket, str, from, i);
-                sets.add(set);
-                if (smallest == null || smallest.size() > set.size()) {
-                    smallest = set;
+                Set<Value> set = find(pairBracket, str, curFrom, i);
+                if (result == null) {
+                    result = set;
+                } else {
+                    result.retainAll(set);
                 }
+                if (result.size() == 0) {
+                    return result;
+                }
+                curFrom = i + AND_OPERAND.length();
+                i = curFrom - 1;
             }
         }
-        if (smallest == null) {
-            return null;
-        }
-        Set<Value> lastSet = find(pairBracket, str, lastAnd + AND_OPERAND.length(), to);
-        sets.add(lastSet);
-        if (smallest.size() > lastSet.size()) {
-            smallest = lastSet;
-        }
-
-        Set<Value> result = smallest;
-        for (Set<Value> set : sets) {
-            if (result == set) {
-                continue;
-            }
-            result.retainAll(set);
+        if (result != null) {
+            Set<Value> lastSet = find(pairBracket, str, curFrom, to);
+            result.retainAll(lastSet);
         }
         return result;
     }
 
     @Nullable
     private Set<Value> findOr(int[] pairBracket, String str, int from, int to) {
-        List<Set<Value>> sets = new ArrayList<>();
-        Set<Value> biggest = null;
-        int lastOr = -1;
+        Set<Value> result = null;
+        int curFrom = from;
         for (int i = from; i < to; i++) {
             char curC = str.charAt(i);
             if (curC == '(') {
                 i = pairBracket[i];
             } else if (isContainSubstringAt(str, i, OR_OPERAND)) {
-                lastOr = i;
-                Set<Value> set = find(pairBracket, str, from, i);
-                sets.add(set);
-                if (biggest == null || biggest.size() > set.size()) {
-                    biggest = set;
+                Set<Value> set = find(pairBracket, str, curFrom, i);
+                if (result == null) {
+                    result = set;
+                } else {
+                    result.addAll(set);
                 }
+                curFrom = i + OR_OPERAND.length();
+                i = curFrom - 1;
             }
         }
-        if (biggest == null) {
-            return null;
-        }
-        Set<Value> lastSet = find(pairBracket, str, lastOr + OR_OPERAND.length(), to);
-        sets.add(lastSet);
-        if (biggest.size() > lastSet.size()) {
-            biggest = lastSet;
-        }
-
-        Set<Value> result = biggest;
-        for (Set<Value> set : sets) {
-            if (result == set) {
-                continue;
-            }
-            result.addAll(set);
+        if (result != null) {
+            Set<Value> lastSet = find(pairBracket, str, curFrom, to);
+            result.addAll(lastSet);
         }
         return result;
     }
