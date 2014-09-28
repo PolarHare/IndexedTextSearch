@@ -27,11 +27,15 @@ public class Searcher<Value> {
             System.out.println("Enter query:");
             String line = in.readLine();
             while (line != null && !line.isEmpty()) {
-                Set<String> matches = searcher.find(line);
-                if (matches.size() == 0) {
-                    System.out.println("No matches!");
-                } else {
-                    System.out.println(matches.size() + " matches: " + matches);
+                try {
+                    Set<String> matches = searcher.find(line);
+                    if (matches.size() == 0) {
+                        System.out.println("No matches!");
+                    } else {
+                        System.out.println(matches.size() + " matches: " + matches);
+                    }
+                } catch (IllegalArgumentException e) {
+                    System.out.println("Incorrect query!");
                 }
                 System.out.println("Enter query:");
                 line = in.readLine();
