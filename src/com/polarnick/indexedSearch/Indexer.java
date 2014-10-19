@@ -68,7 +68,7 @@ public class Indexer {
         System.out.println("Index will be saved to file: '" + indexFilename + "'");
 
         Indexer indexer = new Indexer();
-        Index<String> index;
+        Index index;
         try {
             long startTime = System.currentTimeMillis();
             index = indexer.index(files, Arrays.asList(Language.RU, Language.EN), threadsCount);
@@ -85,7 +85,7 @@ public class Indexer {
         index.saveToFile(indexFilename);
         System.out.println("Index was saved to file: " + indexFilename);
 
-        Searcher<String> searcher = new Searcher<>(index);
+        Searcher searcher = new Searcher(index);
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
         System.out.println("You can use english letters 'a'-'z', 'A'-'Z', russian letters 'а'-'я', 'А'-'Я'," +
                 " brackets '(' and ')', and logical operators ' AND ', ' OR '.");
@@ -93,7 +93,7 @@ public class Indexer {
         String line = in.readLine();
         while (line != null && !line.isEmpty()) {
             try {
-                Set<String> matches = searcher.find(line);
+                Set matches = searcher.find(line);
                 if (matches.size() == 0) {
                     System.out.println("No matches!");
                 } else {
@@ -107,8 +107,8 @@ public class Indexer {
         }
     }
 
-    public <Value> Index<Value> index(Map<File, Value> files, final List<Language> langs, int threadsCount) throws IOException, InterruptedException {
-        final Index<Value> index = new Index<>(langs);
+    public Index index(Map<File, String> files, final List<Language> langs, int threadsCount) throws IOException, InterruptedException {
+        final Index index = new Index(langs);
         final AtomicInteger fileProcessed = new AtomicInteger(0);
         final AtomicLong sizeProcessed = new AtomicLong(0);
         long totalSize = 0;
@@ -118,7 +118,7 @@ public class Indexer {
 
         List<Callable<Void>> tasks = new ArrayList<>();
         final long startTime = System.currentTimeMillis();
-        for (final Map.Entry<File, Value> fileEntry : files.entrySet()) {
+        for (final Map.Entry<File, String> fileEntry : files.entrySet()) {
             final int filesCount = files.size();
             final long finalTotalSize = totalSize;
             tasks.add(new Callable<Void>() {
@@ -126,16 +126,18 @@ public class Indexer {
                 public Void call() throws Exception {
                     Index.traceCacheHits();
                     File file = fileEntry.getKey();
-                    Value value = fileEntry.getValue();
+                    String name = fileEntry.getValue();
 
                     IOException exception = null;
                     try {
                         BufferedReader in = new BufferedReader(new FileReader(file));
                         String line = in.readLine();
+                        int nextWordIndex = 1;
                         while (line != null) {
-                            Set<String> tokens = new HashSet<>(getWords(line, langs));
-                            for (String token : tokens) {
-                                index.put(token, value);
+                            List<String> words = getWords(line, langs);
+                            for (String token : words) {
+                                index.put(token, name, nextWordIndex);
+                                nextWordIndex++;
                             }
                             line = in.readLine();
                         }

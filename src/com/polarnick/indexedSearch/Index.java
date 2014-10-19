@@ -9,12 +9,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * @author Polyarnyi Nikolay - PolarNick239
  */
-public class Index<Value> implements Serializable {
+public class Index implements Serializable {
 
-    private static final long serialVersionUID = 239;
+    private static final long serialVersionUID = 2391;
 
     private final List<Language> langs;
-    private transient ConcurrentMap<String, Set<Value>> resultsByNormForm;
+    private transient ConcurrentMap<String, ConcurrentMap<String, List<Integer>>> resultsByNormForm;
     private transient ThreadLocal<Map<String, Set<String>>> normalFormsCache;
 
     public Index(List<Language> langs) {
@@ -32,38 +32,46 @@ public class Index<Value> implements Serializable {
         };
     }
 
-    public void put(String token, Value value) {
+    public void put(String token, String file, int position) {
         token = token.toLowerCase();
         Set<String> normForms = getAllNormForms(token);
 
         for (String normForm : normForms) {
-            Set<Value> values = resultsByNormForm.get(normForm);
+            ConcurrentMap<String, List<Integer>> values = resultsByNormForm.get(normForm);
             if (values == null) {
-                values = Collections.newSetFromMap(new ConcurrentHashMap<Value, Boolean>());
-                Set<Value> oldSet = resultsByNormForm.putIfAbsent(normForm, values);
+                values = new ConcurrentHashMap<>();
+                ConcurrentMap<String, List<Integer>> oldSet = resultsByNormForm.putIfAbsent(normForm, values);
                 if (oldSet != null) {
                     values = oldSet;
                 }
             }
-            values.add(value);
+            List<Integer> indexes = values.get(file);
+            if(indexes == null) {
+                indexes = Collections.synchronizedList(new ArrayList<Integer>());
+                List<Integer> oldList = values.putIfAbsent(file, indexes);
+                if (oldList != null) {
+                    indexes = oldList;
+                }
+            }
+            indexes.add(position);
         }
     }
 
-    public Set<Value> get(String word) {
+    public Map<String, List<Integer>> get(String word) {
         for (int i = 0; i < word.length(); i++) {
             if (!isCorrectLetter(word.charAt(i))) {
-                return Collections.emptySet();
+                return Collections.emptyMap();
             }
         }
 
         word = word.toLowerCase();
         Set<String> normForms = getAllNormForms(word);
 
-        Set<Value> res = new HashSet<>();
+        Map<String, List<Integer>> res = new HashMap<>();
         for (String normForm : normForms) {
-            Set<Value> values = resultsByNormForm.get(normForm);
+            Map<String, List<Integer>> values = resultsByNormForm.get(normForm);
             if (values != null) {
-                res.addAll(values);
+                res.putAll(values);
             }
         }
         return res;
@@ -130,9 +138,9 @@ public class Index<Value> implements Serializable {
         oos.close();
     }
 
-    public static <Value> Index<Value> loadFromFile(String fileName) throws IOException, ClassNotFoundException {
+    public static Index loadFromFile(String fileName) throws IOException, ClassNotFoundException {
         ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(new FileInputStream(new File(fileName))));
-        Index<Value> index = (Index<Value>) ois.readObject();
+        Index index = (Index) ois.readObject();
         ois.close();
         return index;
     }
@@ -142,8 +150,8 @@ public class Index<Value> implements Serializable {
         System.out.println("Reading index...");
         in.defaultReadObject();
         initCache();
-        List<Value> values = (List<Value>) in.readObject();
-        System.out.println("Read values count: " + values.size());
+        List<String> files = (List<String>) in.readObject();
+        System.out.println("Read values count: " + files.size());
 
         int normsCount = in.readInt();
         System.out.println("Reading norm forms (" + normsCount + ")...");
@@ -155,11 +163,14 @@ public class Index<Value> implements Serializable {
             String normForm = (String) in.readObject();
             int valuesCount = in.readInt();
 
-            Set<Value> valuesSet = new HashSet<>(valuesCount);
-            for(int j = 0; j < valuesCount;j++){
-                valuesSet.add(values.get(in.readInt()));
+            ConcurrentMap<String, List<Integer>> occurs = this.resultsByNormForm.get(normForm);
+            if (occurs == null) {
+                occurs = new ConcurrentHashMap<>(valuesCount);
             }
-            this.resultsByNormForm.put(normForm, valuesSet);
+            for (int j = 0; j < valuesCount; j++) {
+                occurs.put(files.get(in.readInt()), (List<Integer>) in.readObject());
+            }
+            this.resultsByNormForm.put(normForm, occurs);
 
             int procent = i * 100 / normsCount;
             if (procent >= nextProcent) {
@@ -173,14 +184,14 @@ public class Index<Value> implements Serializable {
     private void writeObject(ObjectOutputStream out) throws IOException, ClassNotFoundException {
         long startTime = System.currentTimeMillis();
         System.out.println("Writing index...");
-        HashMap<Value, Integer> valuesIndexes = new HashMap<>();
+        HashMap<String, Integer> filesIndexes = new HashMap<>();
         {
-            List<Value> values = new ArrayList<>();
+            List<String> values = new ArrayList<>();
             for (String normalForm : resultsByNormForm.keySet()) {
-                for (Value value : resultsByNormForm.get(normalForm)) {
-                    if (!valuesIndexes.containsKey(value)) {
-                        valuesIndexes.put(value, values.size());
-                        values.add(value);
+                for (String file : resultsByNormForm.get(normalForm).keySet()) {
+                    if (!filesIndexes.containsKey(file)) {
+                        filesIndexes.put(file, values.size());
+                        values.add(file);
                     }
                 }
             }
@@ -196,10 +207,11 @@ public class Index<Value> implements Serializable {
         out.writeInt(resultsByNormForm.size());
         for (String normalForm : resultsByNormForm.keySet()) {
             out.writeObject(normalForm);
-            Set<Value> values = resultsByNormForm.get(normalForm);
-            out.writeInt(values.size());
-            for (Value value : values) {
-                out.writeInt(valuesIndexes.get(value));
+            Map<String, List<Integer>> occurences = resultsByNormForm.get(normalForm);
+            out.writeInt(occurences.size());
+            for (Map.Entry<String, List<Integer>> occur : occurences.entrySet()) {
+                out.writeInt(filesIndexes.get(occur.getKey()));
+                out.writeObject(occur.getValue());
             }
             int currentProcent = nextNorm * 100 / resultsByNormForm.size();
             if (currentProcent >= nextProcentToTrace) {
